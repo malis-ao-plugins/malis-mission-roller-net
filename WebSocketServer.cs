@@ -32,7 +32,6 @@ public class WebSocketServer
         try
         {
             _listener.Start();
-            Chat.WriteLine($"WS server started http://localhost:{_port}");
         }
         catch (Exception ex)
         {

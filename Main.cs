@@ -29,7 +29,6 @@ public class Main : AOPluginEntry
         _webServer.Register("updateConfig", root =>
         {
             var settings = JsonConvert.DeserializeObject<RollerSettings>(root.GetProperty("settings").GetRawText());
-            Chat.WriteLine(JsonConvert.SerializeObject(settings));
             _roller.Update(settings);
         });
 
