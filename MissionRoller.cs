@@ -12,6 +12,7 @@ public class MissionRoller
     private List<ItemEntry> _items => _settings.RollList;
     private bool _started = false;
     public Action<ItemEntry> OnItemFound;
+    public Action OnStopped;
 
     public MissionRoller()
     {
@@ -38,6 +39,7 @@ public class MissionRoller
 
         Game.OnUpdate -= OnUpdate;
         _started = false;
+        OnStopped?.Invoke();
     }
 
     public void ResetTick()
@@ -45,18 +47,36 @@ public class MissionRoller
         _rollTick.Reset();
     }
 
+    /// <summary>
+    /// Takes the first offered mission that has a wanted item and that the
+    /// settings allow. With Auto Accept on it is accepted and rolling goes on;
+    /// with it off, rolling stops so it can be accepted by hand.
+    /// </summary>
     public void CheckHits(IEnumerable<MissionInfo> missions)
     {
-        var hits = RollListProcessor.Check(missions, _items);
+        if (_settings == null)
+            return;
+
+        var allowed = missions.Where(m => MissionFilter.Allows(m, _settings));
+        var hits = RollListProcessor.Check(allowed, _items);
         if (!hits.Any()) return;
+
         var (missionId, item) = hits.First();
         OnItemFound?.Invoke(item);
-        Network.Send(new CreateQuestMessage { MissionId = missionId });
+
+        if (_settings.AutoAcceptMissions)
+        {
+            Network.Send(new CreateQuestMessage { MissionId = missionId });
+            return;
+        }
+
+        Stop();
+        Chat.WriteLine($"Match found: {item.Name ?? "a wanted item"}. Auto Accept is off, so accept it at the terminal.");
     }
 
     private void OnUpdate(object sender, float e)
     {
-        if (!_rollTick.Elapsed)
+        if (!_rollTick.Elapsed || _settings == null)
             return;
 
         byte difficultyValue;
@@ -80,7 +100,7 @@ public class MissionRoller
             difficultyValue = (byte)_settings.EasyHard;
         }
 
-        RollerTerminal.Use(difficultyValue);
+        RollerTerminal.Use(difficultyValue, _settings);
     }
 }
 

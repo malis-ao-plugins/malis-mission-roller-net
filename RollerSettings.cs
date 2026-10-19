@@ -21,7 +21,6 @@ public class RollerSettings
     [JsonProperty("autoAdjustLvlSlider")] public bool AutoAdjustLvlSlider { get; set; }
     [JsonProperty("removeRolledEntries")] public bool RemoveRolledEntries { get; set; } 
     [JsonProperty("autoAcceptMissions")] public bool AutoAcceptMissions { get; set; } 
-    [JsonProperty("showPlayfieldBounds")] public bool ShowPlayfieldBounds { get; set; } 
 
     [JsonProperty("locations")]
     public Dictionary<int, LocationFilter> Locations { get; set; }
@@ -47,7 +46,6 @@ public class RollerSettings
             case "Auto Adjust Lvl Slider": AutoAdjustLvlSlider = !AutoAdjustLvlSlider; break;
             case "Remove Rolled Entries": RemoveRolledEntries = !RemoveRolledEntries; break;
             case "Auto Accept Missions": AutoAcceptMissions = !AutoAcceptMissions; break;
-            case "Show Playfield Bounds": ShowPlayfieldBounds = !ShowPlayfieldBounds; break;
         }
     }
 

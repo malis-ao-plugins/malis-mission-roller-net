@@ -36,6 +36,7 @@ public class Main : AOPluginEntry
         _page = new WebPageServer();
         _page.Start();
         _roller.OnItemFound += OnItemFound;
+        _roller.OnStopped += () => _webServer.Broadcast(JsonConvert.SerializeObject(new { type = "rolling", rolling = false }));
         Mission.RollListChanged += OnRollListChanged;
     }
 
