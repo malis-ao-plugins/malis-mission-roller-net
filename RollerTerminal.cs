@@ -4,7 +4,8 @@ using AOSharp.Core.UI;
 
 public class RollerTerminal
 {
-    public static void Use(byte difficultyValue, RollerSettings settings)
+    /// <summary>Asks the nearest terminal for missions. False, with the reason in chat, when there is none in reach.</summary>
+    public static bool Use(byte difficultyValue, RollerSettings settings)
     {
         var closestTerminal = DynelManager.AllDynels
             .Where(x => x.Identity.Type == IdentityType.MissionTerminal)
@@ -13,14 +14,14 @@ public class RollerTerminal
 
         if (closestTerminal == null)
         {
-            Chat.WriteLine("No terminal found");
-            return;
+            Chat.WriteLine("Mission Roller: no mission terminal nearby. Rolling stopped.");
+            return false;
         }
 
         if (closestTerminal.DistanceFrom(DynelManager.LocalPlayer) > 7f)
         {
-            Chat.WriteLine("Too far away. Move closer to the terminal");
-            return;
+            Chat.WriteLine("Mission Roller: too far from the terminal. Move closer and roll again.");
+            return false;
         }
 
         new MissionTerminal(closestTerminal).RequestMissions(
@@ -31,6 +32,7 @@ public class RollerTerminal
             physicalMystical: Slider(settings.PhysicalMystical),
             headonStealth: Slider(settings.HeadonStealth),
             creditsXp: Slider(settings.CreditsXp));
+        return true;
     }
 
     /// <summary>

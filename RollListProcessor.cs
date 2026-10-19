@@ -13,7 +13,8 @@ public class ItemEntry
     [JsonProperty("max_ql")] public int MaxQl { get; set; }
 
     [JsonIgnore] private string? _name;
-    public string? Name => _name ??= Item.TryGet(Ids[0], Ids.Length > 1 ? Ids[1] : Ids[0], Ql, out ACGItem item) ? item.Name : null;
+    // Ids lists every QL variant, lowest first; the game looks an item up by its low and high end.
+    public string? Name => _name ??= Item.TryGet(Ids[0], Ids[^1], Ql, out ACGItem item) ? item.Name : null;
 
     public static bool operator ==(ItemEntry? a, ItemEntry? b)
     {
@@ -117,14 +118,17 @@ public static class RollListProcessor
         return true;
     }
 
+    /// <summary>
+    /// The slider runs from 1 to 11 and the level table from 0, so position n reads entry n - 1.
+    /// A position past the end of the table rolls nothing.
+    /// </summary>
     public static bool HasValidRoll(byte difficulty, IEnumerable<ItemEntry> items)
     {
-        return items.Any(x => IsRollable(difficulty, x));
-    }
+        int index = difficulty - 1;
+        if (index < 0 || index >= _missionLevels.Count)
+            return false;
 
-    private static bool IsRollable(byte difficulty, ItemEntry item)
-    {
-        return IsQlMatch(item, _missionLevels[difficulty], IsNanoCrystal(item.Name));
+        return items.Any(x => IsQlMatch(x, _missionLevels[index], IsNanoCrystal(x.Name)));
     }
 
     private static bool IsRollable(ItemEntry item)

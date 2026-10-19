@@ -81,11 +81,13 @@ public class MissionRoller
 
         byte difficultyValue;
 
+        // When rolling cannot get anywhere, say why once and stop, rather than repeating it every roll.
         if (_settings.AutoAdjustLvlSlider)
         {
             if (!RollListProcessor.TryGetDifficultySliderValue(_items, out difficultyValue))
             {
-                Chat.WriteLine("No valid items to roll");
+                Chat.WriteLine("Mission Roller: nothing in the roll list can come from a mission at your level. Rolling stopped.");
+                Stop();
                 return;
             }
         }
@@ -93,14 +95,16 @@ public class MissionRoller
         {
             if (!RollListProcessor.HasValidRoll((byte)_settings.EasyHard, _items))
             {
-                Chat.WriteLine("No valid items to roll");
+                Chat.WriteLine("Mission Roller: nothing in the roll list can come from a mission at this slider position. Rolling stopped.");
+                Stop();
                 return;
             }
 
             difficultyValue = (byte)_settings.EasyHard;
         }
 
-        RollerTerminal.Use(difficultyValue, _settings);
+        if (!RollerTerminal.Use(difficultyValue, _settings))
+            Stop();
     }
 }
 
