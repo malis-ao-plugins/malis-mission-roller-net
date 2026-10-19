@@ -4,6 +4,7 @@ using AOSharp.Core.Inventory;
 using AOSharp.Core.UI;
 using Newtonsoft.Json;
 using SmokeLounge.AOtomation.Messaging.GameData;
+using SmokeLounge.AOtomation.Messaging.Messages.N3Messages;
 
 public class Main : AOPluginEntry
 {
@@ -12,6 +13,8 @@ public class Main : AOPluginEntry
     private static WebSocketServer _webServer;
     private static AOItemQueryService _itemService;
     private static WebPageServer _page;
+    private static MissionInfo[] _offered = [];
+    private static volatile int _acceptRequested;
 
     public override void Run()
     {
@@ -26,6 +29,8 @@ public class Main : AOPluginEntry
         _webServer = new WebSocketServer(7069);
         _webServer.Register("start", _ => _roller.Start());
         _webServer.Register("stop", _ => _roller.Stop());
+        // Socket handlers run off the game thread, so this only records the request; OnUpdate sends it.
+        _webServer.Register("accept", root => _acceptRequested = root.GetProperty("id").GetInt32());
         _webServer.Register("updateConfig", root =>
         {
             var settings = JsonConvert.DeserializeObject<RollerSettings>(root.GetProperty("settings").GetRawText());
@@ -38,6 +43,25 @@ public class Main : AOPluginEntry
         _roller.OnItemFound += OnItemFound;
         _roller.OnStopped += () => _webServer.Broadcast(JsonConvert.SerializeObject(new { type = "rolling", rolling = false }));
         Mission.RollListChanged += OnRollListChanged;
+        Game.OnUpdate += OnUpdate;
+    }
+
+    /// <summary>Accepts the offered mission the window asked for.</summary>
+    private static void OnUpdate(object sender, float deltaTime)
+    {
+        int id = _acceptRequested;
+        if (id == 0)
+            return;
+
+        _acceptRequested = 0;
+        var mission = _offered.FirstOrDefault(m => m.MissionIdentity.Instance == id);
+        if (mission == null)
+        {
+            Chat.WriteLine("That mission is no longer offered. Roll again and accept from the new list.");
+            return;
+        }
+
+        Network.Send(new CreateQuestMessage { MissionId = mission.MissionIdentity });
     }
 
     private void OnItemFound(ItemEntry item)
@@ -56,6 +80,7 @@ public class Main : AOPluginEntry
     private static void OnRollListChanged(object sender, RollListChangedArgs e)
     {
         _roller.ResetTick();
+        _offered = [.. e.MissionDetails];
         _webServer.Broadcast(SerializeMissions([.. e.MissionDetails]));
         _roller.CheckHits(e.MissionDetails);
     }
@@ -93,5 +118,6 @@ public class Main : AOPluginEntry
         _page?.Stop();
         _itemService?.Stop();
         Mission.RollListChanged -= OnRollListChanged;
+        Game.OnUpdate -= OnUpdate;
     }
 }
