@@ -15,6 +15,9 @@ public class Main : AOPluginEntry
     private static WebPageServer _page;
     private static MissionInfo[] _offered = [];
     private static volatile int _acceptRequested;
+    private static volatile bool _startRequested;
+    private static volatile bool _stopRequested;
+    private static volatile RollerSettings? _incomingSettings;
 
     public override void Run()
     {
@@ -27,15 +30,13 @@ public class Main : AOPluginEntry
         _roller = new MissionRoller();
         _boundsProcessor = new BoundsProcessor();
         _webServer = new WebSocketServer(7069);
-        _webServer.Register("start", _ => _roller.Start());
-        _webServer.Register("stop", _ => _roller.Stop());
-        // Socket handlers run off the game thread, so this only records the request; OnUpdate sends it.
+        // Socket handlers run off the game thread, so they only record what the window asked for;
+        // OnUpdate acts on it on the game thread.
+        _webServer.Register("start", _ => _startRequested = true);
+        _webServer.Register("stop", _ => _stopRequested = true);
         _webServer.Register("accept", root => _acceptRequested = root.GetProperty("id").GetInt32());
         _webServer.Register("updateConfig", root =>
-        {
-            var settings = JsonConvert.DeserializeObject<RollerSettings>(root.GetProperty("settings").GetRawText());
-            _roller.Update(settings);
-        });
+            _incomingSettings = JsonConvert.DeserializeObject<RollerSettings>(root.GetProperty("settings").GetRawText()));
 
         _webServer.Start();
         _page = new WebPageServer();
@@ -46,9 +47,38 @@ public class Main : AOPluginEntry
         Game.OnUpdate += OnUpdate;
     }
 
-    /// <summary>Accepts the offered mission the window asked for.</summary>
+    /// <summary>Carries out what the window asked for: new settings, start, stop and accept.</summary>
     private static void OnUpdate(object sender, float deltaTime)
     {
+        var settings = _incomingSettings;
+        if (settings != null)
+        {
+            _incomingSettings = null;
+            _roller.Update(settings);
+        }
+
+        if (_stopRequested)
+        {
+            _stopRequested = false;
+            _startRequested = false;
+            _roller.Stop();
+        }
+
+        if (_startRequested)
+        {
+            _startRequested = false;
+            if (_roller.HasSettings)
+            {
+                _roller.Start();
+                Chat.WriteLine("Mission Roller: rolling.");
+            }
+            else
+            {
+                Chat.WriteLine("Mission Roller: no settings from the window yet. Reload the toolkit page, then roll again.");
+                _webServer.Broadcast(JsonConvert.SerializeObject(new { type = "rolling", rolling = false }));
+            }
+        }
+
         int id = _acceptRequested;
         if (id == 0)
             return;

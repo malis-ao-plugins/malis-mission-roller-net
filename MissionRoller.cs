@@ -23,6 +23,8 @@ public class MissionRoller
         _settings = settings;
     }
 
+    public bool HasSettings => _settings != null;
+
     public void Start()
     {
         if (_started)
