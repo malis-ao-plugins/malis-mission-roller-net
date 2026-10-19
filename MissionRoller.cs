@@ -9,11 +9,15 @@ public class MissionRoller
 {
     private RollerSettings _settings;
     private readonly AutoResetInterval _rollTick = new(1500);
-    private List<RollerItemEntry> _rollerEntries = new();
-    private List<ItemEntry> _items => _rollerEntries.Select(x => x.Item).ToList();
+    private List<ItemEntry> _items => _settings.RollList;
     private bool _started = false;
+    public Action<ItemEntry> OnItemFound;
 
-    public MissionRoller(RollerSettings settings)
+    public MissionRoller()
+    {
+    }
+
+    public void Update(RollerSettings settings)
     {
         _settings = settings;
     }
@@ -36,11 +40,6 @@ public class MissionRoller
         _started = false;
     }
 
-    public void UpdateItems(List<RollerItemEntry> items)
-    {
-        _rollerEntries = items;
-    }
-
     public void ResetTick()
     {
         _rollTick.Reset();
@@ -50,8 +49,9 @@ public class MissionRoller
     {
         var hits = RollListProcessor.Check(missions, _items);
         if (!hits.Any()) return;
-
-        Network.Send(new CreateQuestMessage { MissionId = hits.First() });
+        var (missionId, item) = hits.First();
+        OnItemFound?.Invoke(item);
+        Network.Send(new CreateQuestMessage { MissionId = missionId });
     }
 
     private void OnUpdate(object sender, float e)

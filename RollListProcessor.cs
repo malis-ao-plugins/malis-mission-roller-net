@@ -13,8 +13,7 @@ public class ItemEntry
     [JsonProperty("max_ql")] public int MaxQl { get; set; }
 
     [JsonIgnore] private string? _name;
-    [JsonIgnore] public string? Name => _name ??= Item.TryGet(Ids[0], Ids[1], Ql, out ACGItem item) ? item.Name : null;
-
+    public string? Name => _name ??= Item.TryGet(Ids[0], Ids.Length > 1 ? Ids[1] : Ids[0], Ql, out ACGItem item) ? item.Name : null;
 
     public static bool operator ==(ItemEntry? a, ItemEntry? b)
     {
@@ -78,11 +77,14 @@ public static class RollListProcessor
 
     }
 
-    public static IEnumerable<Identity> Check(IEnumerable<MissionInfo> missions, IEnumerable<ItemEntry> items)
+    public static IEnumerable<(Identity, ItemEntry)> Check(IEnumerable<MissionInfo> missions, IEnumerable<ItemEntry> items)
     {
         return missions
             .Where(mission => items.Any(item => MissionContainsItem(mission, item)))
-            .Select(mission => mission.MissionIdentity);
+            .Select(mission => (
+                mission.MissionIdentity,
+                items.First(item => MissionContainsItem(mission, item))
+            ));
     }
 
     private static bool MissionContainsItem(MissionInfo mission, ItemEntry item)
@@ -94,12 +96,14 @@ public static class RollListProcessor
     public static bool TryGetDifficultySliderValue(IEnumerable<ItemEntry> items, out byte value)
     {
         value = 0;
-
+     
         if (!FindNextRollable(items, out var item))
             return false;
-
+      
         var missionLevel = DetermineMissionLevel(item);
+
         value = (byte)(_missionLevels.IndexOf(missionLevel) + 1);
+
         return true;
     }
 

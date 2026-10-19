@@ -1,5 +1,4 @@
 using AOSharp.Core.UI;
-using Newtonsoft.Json;
 using System.Net;
 using System.Net.WebSockets;
 using System.Text;
@@ -10,33 +9,22 @@ public class WebSocketServer
     private readonly HttpListener _listener;
     private readonly List<WebSocket> _clients = new();
     private readonly CancellationTokenSource _cts = new();
+    private readonly Dictionary<string, Action<JsonElement>> _handlers = new();
     private Task _listenerTask;
+    private readonly int _port;
 
     public event Action OnClientConnected;
-    public event Action OnStart;
-    public event Action OnStop;
 
-    public event Action<string> OnToggleMissionType;
-    public event Action<string> OnToggleExtra;
-    public event Action<int, float> OnSetSlider;
-    public event Action<int> OnTogglePlayfield;
-    public event Action<int> OnRemoveBounds;
-    public event Action OnStartBounds;
-    public event Action OnConfirmBounds;
-    public event Action OnEnableAllPlayfields;
-    public event Action OnDisableAllPlayfields;
-
-    public event Action<ItemEntry> OnAddRollItem;
-    public event Action<ItemEntry> OnRemoveRollItem;
-    public event Action<ItemEntry, int> OnSetRollCount;
-    public event Action<int, int, int, int, int> OnSetBounds;
-
-    public event Action<string> OnSaveLayout;
-
-    public WebSocketServer(int port = 7069)
+    public WebSocketServer(int port)
     {
+        _port = port;
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://localhost:{port}/");
+    }
+
+    public void Register(string messageType, Action<JsonElement> handler)
+    {
+        _handlers[messageType] = handler;
     }
 
     public void Start()
@@ -44,7 +32,7 @@ public class WebSocketServer
         try
         {
             _listener.Start();
-            Chat.WriteLine("WS server started");
+            Chat.WriteLine($"WS server started http://localhost:{_port}");
         }
         catch (Exception ex)
         {
@@ -84,20 +72,8 @@ public class WebSocketServer
 
     public void Stop()
     {
+        _handlers.Clear();
         OnClientConnected = null;
-        OnStart = null;
-        OnStop = null;
-        OnToggleMissionType = null;
-        OnToggleExtra = null;
-        OnSetSlider = null;
-        OnTogglePlayfield = null;
-        OnRemoveBounds = null;
-        OnStartBounds = null;
-        OnConfirmBounds = null;
-        OnAddRollItem = null;
-        OnRemoveRollItem = null;
-        OnSetRollCount = null;
-        OnSaveLayout = null;
 
         _cts.Cancel();
         try { _listener.Stop(); } catch { }
@@ -129,84 +105,14 @@ public class WebSocketServer
                 if (result.Count == 0 || result.MessageType == WebSocketMessageType.Close) break;
 
                 var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                var doc  = JsonDocument.Parse(json);
+                var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
+                var type = root.GetProperty("type").GetString();
 
-                Chat.WriteLine(json);
-
-                switch (root.GetProperty("type").GetString())
-                {
-                    case "toggleMissionType":
-                        OnToggleMissionType?.Invoke(root.GetProperty("value").GetString());
-                        break;
-
-                    case "toggleExtra":
-                        OnToggleExtra?.Invoke(root.GetProperty("value").GetString());
-                        break;
-
-                    case "setSlider":
-                        OnSetSlider?.Invoke(
-                            root.GetProperty("index").GetInt32(),
-                            root.GetProperty("value").GetSingle()
-                        );
-                        break;
-
-                    case "togglePlayfield":
-                        OnTogglePlayfield?.Invoke(root.GetProperty("playfieldId").GetInt32());
-                        break;
-
-                    case "removeBounds":
-                        OnRemoveBounds?.Invoke(root.GetProperty("playfieldId").GetInt32());
-                        break;
-
-                    case "enableAllPlayfields":
-                        OnEnableAllPlayfields?.Invoke();
-                        break;
-
-                    case "disableAllPlayfields":
-                        OnDisableAllPlayfields?.Invoke();
-                        break;
-
-                    case "startBounds":
-                        OnStartBounds?.Invoke();
-                        break;
-
-                    case "confirmBounds":
-                        OnConfirmBounds?.Invoke();
-                        break;
-
-                    case "addRollItem":
-                        OnAddRollItem?.Invoke(JsonConvert.DeserializeObject<ItemEntry>(root.GetProperty("item").GetRawText()));
-                        break;
-
-                    case "removeRollItem":
-                        OnRemoveRollItem.Invoke(JsonConvert.DeserializeObject<ItemEntry>(root.GetProperty("item").GetRawText()));
-                        break;
-
-                    case "setRollCount":
-                        OnSetRollCount?.Invoke(JsonConvert.DeserializeObject<ItemEntry>(root.GetProperty("item").GetRawText()), root.GetProperty("count").GetInt32());
-                        break;
-                    case "setBounds":
-                        OnSetBounds?.Invoke(
-                            root.GetProperty("playfieldId").GetInt32(),
-                            root.GetProperty("x1").GetInt32(),
-                            root.GetProperty("y1").GetInt32(),
-                            root.GetProperty("x2").GetInt32(),
-                            root.GetProperty("y2").GetInt32()
-                        );
-                        break;
-                    case "start":
-                        OnStart?.Invoke();
-                        break;
-
-                    case "stop":
-                        OnStop?.Invoke();
-                        break;
-
-                    case "saveLayout":
-                        OnSaveLayout?.Invoke(json);
-                        break;
-                }
+                if (_handlers.TryGetValue(type, out var handler))
+                    handler(root);
+                else
+                    Chat.WriteLine($"Unhandled message type: {type}");
             }
             catch (Exception ex)
             {
