@@ -1,4 +1,5 @@
 using AOSharp.Core.UI;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.WebSockets;
 using System.Text;
@@ -12,6 +13,8 @@ public class WebSocketServer
     private readonly Dictionary<string, Action<JsonElement>> _handlers = new();
     private Task _listenerTask;
     private readonly int _port;
+    // Errors raised on the socket threads, held for the game thread to print.
+    private readonly ConcurrentQueue<string> _notices = new();
 
     public event Action OnClientConnected;
 
@@ -49,7 +52,8 @@ public class WebSocketServer
                     if (ctx.Request.IsWebSocketRequest)
                     {
                         var wsCtx = await ctx.AcceptWebSocketAsync(null);
-                        _clients.Add(wsCtx.WebSocket);
+                        lock (_clients)
+                            _clients.Add(wsCtx.WebSocket);
                         OnClientConnected?.Invoke();
                         _ = HandleClient(wsCtx.WebSocket);
                     }
@@ -59,10 +63,17 @@ public class WebSocketServer
         });
     }
 
+    /// <summary>Hands over one queued notice. Call from the game thread, which is the one allowed to write to chat.</summary>
+    public bool TryTakeNotice(out string notice) => _notices.TryDequeue(out notice);
+
     public void Broadcast(string json)
     {
         var bytes = Encoding.UTF8.GetBytes(json);
-        foreach (var client in _clients.ToList())
+        List<WebSocket> clients;
+        lock (_clients)
+            clients = _clients.ToList();
+
+        foreach (var client in clients)
         {
             if (client.State == WebSocketState.Open)
                 client.SendAsync(bytes, WebSocketMessageType.Text, true, _cts.Token);
@@ -77,7 +88,14 @@ public class WebSocketServer
         _cts.Cancel();
         try { _listener.Stop(); } catch { }
 
-        foreach (var c in _clients)
+        List<WebSocket> clients;
+        lock (_clients)
+        {
+            clients = _clients.ToList();
+            _clients.Clear();
+        }
+
+        foreach (var c in clients)
         {
             try
             {
@@ -88,37 +106,51 @@ public class WebSocketServer
             finally { c.Dispose(); }
         }
 
-        _clients.Clear();
         try { _listenerTask?.Wait(1000); } catch { }
     }
 
     private async Task HandleClient(WebSocket ws)
     {
         var buffer = new byte[4096];
+        var message = new MemoryStream();
 
         while (ws.State == WebSocketState.Open)
         {
             try
             {
-                var result = await ws.ReceiveAsync(buffer, _cts.Token);
-                if (result.Count == 0 || result.MessageType == WebSocketMessageType.Close) break;
+                // A message larger than the buffer arrives in several reads; parse it only once it is whole.
+                message.SetLength(0);
+                WebSocketReceiveResult result;
+                do
+                {
+                    result = await ws.ReceiveAsync(buffer, _cts.Token);
+                    message.Write(buffer, 0, result.Count);
+                }
+                while (!result.EndOfMessage && result.MessageType != WebSocketMessageType.Close);
 
-                var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                var doc = JsonDocument.Parse(json);
+                if (result.MessageType == WebSocketMessageType.Close) break;
+                if (message.Length == 0) continue;
+
+                using var doc = JsonDocument.Parse(message.ToArray());
                 var root = doc.RootElement;
                 var type = root.GetProperty("type").GetString();
 
                 if (_handlers.TryGetValue(type, out var handler))
                     handler(root);
                 else
-                    Chat.WriteLine($"Unhandled message type: {type}");
+                    _notices.Enqueue($"Unhandled message type: {type}");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                Chat.WriteLine($"HandleClient error: {ex.Message}");
+                _notices.Enqueue($"HandleClient error: {ex.Message}");
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
         }
 
-        _clients.Remove(ws);
+        lock (_clients)
+            _clients.Remove(ws);
     }
 }

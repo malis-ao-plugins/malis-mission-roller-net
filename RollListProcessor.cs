@@ -11,10 +11,12 @@ public class ItemEntry
     [JsonProperty("ids")] public int[] Ids { get; set; }
     [JsonProperty("ql")] public int Ql { get; set; }
     [JsonProperty("max_ql")] public int MaxQl { get; set; }
+    // How many more missions to take for this entry. Not part of its identity.
+    [JsonProperty("count")] public int Count { get; set; } = 1;
 
     [JsonIgnore] private string? _name;
     // Ids lists every QL variant, lowest first; the game looks an item up by its low and high end.
-    public string? Name => _name ??= Item.TryGet(Ids[0], Ids[^1], Ql, out ACGItem item) ? item.Name : null;
+    [JsonIgnore] public string? Name => _name ??= Item.TryGet(Ids[0], Ids[^1], Ql, out ACGItem item) ? item.Name : null;
 
     public static bool operator ==(ItemEntry? a, ItemEntry? b)
     {
@@ -46,12 +48,6 @@ public class ItemEntry
 
         return hash.ToHashCode();
     }
-}
-
-public class RollerItemEntry
-{
-    [JsonProperty("item")] public ItemEntry Item { get; set; }
-    [JsonProperty("count")] public int Count { get; set; }
 }
 
 public static class RollListProcessor

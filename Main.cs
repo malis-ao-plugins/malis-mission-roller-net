@@ -38,6 +38,10 @@ public class Main : AOPluginEntry
         _webServer.Register("updateConfig", root =>
             _incomingSettings = JsonConvert.DeserializeObject<RollerSettings>(root.GetProperty("settings").GetRawText()));
 
+        // A reloaded window cannot know the roller is still running unless it is told.
+        _webServer.OnClientConnected += () =>
+            _webServer.Broadcast(JsonConvert.SerializeObject(new { type = "rolling", rolling = _roller.IsRolling }));
+
         _webServer.Start();
         _page = new WebPageServer();
         _page.Start();
@@ -50,6 +54,9 @@ public class Main : AOPluginEntry
     /// <summary>Carries out what the window asked for: new settings, start, stop and accept.</summary>
     private static void OnUpdate(object sender, float deltaTime)
     {
+        while (_webServer.TryTakeNotice(out var notice))
+            Chat.WriteLine(notice);
+
         var settings = _incomingSettings;
         if (settings != null)
         {
@@ -103,7 +110,10 @@ public class Main : AOPluginEntry
             {
                 ids = item.Ids,
                 ql = item.Ql,
-            }
+            },
+            // The list as the plugin now has it, with the hit already taken off;
+            // the window shows this rather than working the change out itself.
+            rollList = _roller.RollList,
         }));
     }
 

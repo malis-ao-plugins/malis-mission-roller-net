@@ -25,6 +25,10 @@ public class MissionRoller
 
     public bool HasSettings => _settings != null;
 
+    public bool IsRolling => _started;
+
+    public List<ItemEntry> RollList => _items;
+
     public void Start()
     {
         if (_started)
@@ -53,6 +57,10 @@ public class MissionRoller
     /// Takes the first offered mission that has a wanted item and that the
     /// settings allow. With Auto Accept on it is accepted and rolling goes on;
     /// with it off, rolling stops so it can be accepted by hand.
+    ///
+    /// With Remove On Hit on, the entry's count drops here, before the next
+    /// roll, rather than waiting for the window to send the list back: until
+    /// then every roll that offered the same item was accepted again.
     /// </summary>
     public void CheckHits(IEnumerable<MissionInfo> missions)
     {
@@ -64,11 +72,26 @@ public class MissionRoller
         if (!hits.Any()) return;
 
         var (missionId, item) = hits.First();
+
+        if (_settings.RemoveRolledEntries)
+        {
+            if (item.Count > 1)
+                item.Count--;
+            else
+                _items.Remove(item);
+        }
+
         OnItemFound?.Invoke(item);
 
         if (_settings.AutoAcceptMissions)
         {
             Network.Send(new CreateQuestMessage { MissionId = missionId });
+
+            if (_items.Count == 0)
+            {
+                Chat.WriteLine("Mission Roller: every item in the roll list has been found. Rolling stopped.");
+                Stop();
+            }
             return;
         }
 
