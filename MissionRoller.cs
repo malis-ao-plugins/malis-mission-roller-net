@@ -8,7 +8,10 @@ using SmokeLounge.AOtomation.Messaging.Messages.N3Messages;
 public class MissionRoller
 {
     private RollerSettings _settings;
-    private readonly AutoResetInterval _rollTick = new(1500);
+    private const int MinRollInterval = 500;
+    private const int MaxRollInterval = 10000;
+    private AutoResetInterval _rollTick = new(1500);
+    private int _rollIntervalMs = 1500;
     private List<ItemEntry> _items => _settings.RollList;
     private bool _started = false;
     public Action<ItemEntry> OnItemFound;
@@ -21,6 +24,14 @@ public class MissionRoller
     public void Update(RollerSettings settings)
     {
         _settings = settings;
+
+        // An Interval's length is fixed when it is made, so a new rate takes a new one.
+        int ms = Math.Clamp(settings.RollInterval, MinRollInterval, MaxRollInterval);
+        if (ms != _rollIntervalMs)
+        {
+            _rollIntervalMs = ms;
+            _rollTick = new AutoResetInterval(ms);
+        }
     }
 
     public bool HasSettings => _settings != null;

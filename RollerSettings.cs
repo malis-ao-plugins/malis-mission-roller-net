@@ -22,6 +22,9 @@ public class RollerSettings
     [JsonProperty("removeRolledEntries")] public bool RemoveRolledEntries { get; set; } 
     [JsonProperty("autoAcceptMissions")] public bool AutoAcceptMissions { get; set; } 
 
+    // Milliseconds between terminal requests.
+    [JsonProperty("rollInterval")] public int RollInterval { get; set; } = 1500;
+
     [JsonProperty("locations")]
     public Dictionary<int, LocationFilter> Locations { get; set; }
 
