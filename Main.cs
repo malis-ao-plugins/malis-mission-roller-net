@@ -10,9 +10,8 @@ public class Main : AOPluginEntry
 {
     private static MissionRoller _roller;
     private static BoundsProcessor _boundsProcessor;
-    private static WebSocketServer _webServer;
+    private static ToolkitApp _toolkit;
     private static AOItemQueryService _itemService;
-    private static WebPageServer _page;
     private static MissionInfo[] _offered = [];
     private static volatile int _acceptRequested;
     private static volatile bool _startRequested;
@@ -29,24 +28,21 @@ public class Main : AOPluginEntry
         _itemService.Start();
         _roller = new MissionRoller();
         _boundsProcessor = new BoundsProcessor();
-        _webServer = new WebSocketServer(7069);
+        _toolkit = ToolkitHub.Register("app_7069");
         // Socket handlers run off the game thread, so they only record what the window asked for;
         // OnUpdate acts on it on the game thread.
-        _webServer.Register("start", _ => _startRequested = true);
-        _webServer.Register("stop", _ => _stopRequested = true);
-        _webServer.Register("accept", root => _acceptRequested = root.GetProperty("id").GetInt32());
-        _webServer.Register("updateConfig", root =>
+        _toolkit.Register("start", _ => _startRequested = true);
+        _toolkit.Register("stop", _ => _stopRequested = true);
+        _toolkit.Register("accept", root => _acceptRequested = root.GetProperty("id").GetInt32());
+        _toolkit.Register("updateConfig", root =>
             _incomingSettings = JsonConvert.DeserializeObject<RollerSettings>(root.GetProperty("settings").GetRawText()));
 
         // A reloaded window cannot know the roller is still running unless it is told.
-        _webServer.OnClientConnected += () =>
-            _webServer.Broadcast(JsonConvert.SerializeObject(new { type = "rolling", rolling = _roller.IsRolling }));
+        _toolkit.PageConnected += () =>
+            _toolkit.Send(JsonConvert.SerializeObject(new { type = "rolling", rolling = _roller.IsRolling }));
 
-        _webServer.Start();
-        _page = new WebPageServer();
-        _page.Start();
         _roller.OnItemFound += OnItemFound;
-        _roller.OnStopped += () => _webServer.Broadcast(JsonConvert.SerializeObject(new { type = "rolling", rolling = false }));
+        _roller.OnStopped += () => _toolkit.Send(JsonConvert.SerializeObject(new { type = "rolling", rolling = false }));
         Mission.RollListChanged += OnRollListChanged;
         Game.OnUpdate += OnUpdate;
     }
@@ -54,9 +50,6 @@ public class Main : AOPluginEntry
     /// <summary>Carries out what the window asked for: new settings, start, stop and accept.</summary>
     private static void OnUpdate(object sender, float deltaTime)
     {
-        while (_webServer.TryTakeNotice(out var notice))
-            Chat.WriteLine(notice);
-
         var settings = _incomingSettings;
         if (settings != null)
         {
@@ -82,7 +75,7 @@ public class Main : AOPluginEntry
             else
             {
                 Chat.WriteLine("Mission Roller: no settings from the window yet. Reload the toolkit page, then roll again.");
-                _webServer.Broadcast(JsonConvert.SerializeObject(new { type = "rolling", rolling = false }));
+                _toolkit.Send(JsonConvert.SerializeObject(new { type = "rolling", rolling = false }));
             }
         }
 
@@ -103,7 +96,7 @@ public class Main : AOPluginEntry
 
     private void OnItemFound(ItemEntry item)
     {
-        _webServer.Broadcast(JsonConvert.SerializeObject(new
+        _toolkit.Send(JsonConvert.SerializeObject(new
         {
             type = "missionHit",
             item = new
@@ -121,7 +114,7 @@ public class Main : AOPluginEntry
     {
         _roller.ResetTick();
         _offered = [.. e.MissionDetails];
-        _webServer.Broadcast(SerializeMissions([.. e.MissionDetails]));
+        _toolkit.Send(SerializeMissions([.. e.MissionDetails]));
         _roller.CheckHits(e.MissionDetails);
     }
 
@@ -154,8 +147,7 @@ public class Main : AOPluginEntry
     public override void Teardown()
     {
         _roller?.Stop();
-        _webServer?.Stop();
-        _page?.Stop();
+        _toolkit?.Dispose();
         _itemService?.Stop();
         Mission.RollListChanged -= OnRollListChanged;
         Game.OnUpdate -= OnUpdate;
